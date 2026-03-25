@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 export default function AddBook() {
   const [title, setTitle] = useState("");
@@ -125,8 +126,23 @@ export default function AddBook() {
                   marginBottom: "10px",
                 }}
               >
-                <strong>{book.title}</strong>, {book.author} ({book.year},{" "}
-                {book.press})
+                {/* Kullanıcı buraya tıkladığında /books/1, /books/2 gibi adreslere gidecek */}
+                <Link
+                  href={`/books/${book.id}`}
+                  style={{
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "block",
+                  }}
+                >
+                  <strong>{book.title}</strong>, {book.author} ({book.year},{" "}
+                  {book.press})
+                  <span
+                    style={{ float: "right", color: "blue", fontSize: "12px" }}
+                  >
+                    Detay &rarr;
+                  </span>
+                </Link>
               </li>
             ))
           )}
