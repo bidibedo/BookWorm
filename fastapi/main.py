@@ -27,3 +27,17 @@ async def create_book(title: str, author: str, year: int, press: str):
 async def get_books():
     data = supabase.table("books").select("*").execute()
     return {"status": "success", "data": data.data}
+
+    # Mevcut kodlarının altına eklenecek
+
+@app.get("/books/{book_id}")
+async def get_book(book_id: int):
+    # .eq("id", book_id) kısmı, veritabanında id'si bizim gönderdiğimiz id'ye eşit olanı filtreler
+    data = supabase.table("books").select("*").eq("id", book_id).execute()
+    
+    # Eğer o ID'ye ait kitap yoksa boş döner
+    if len(data.data) == 0:
+        return {"status": "error", "message": "Kitap bulunamadı"}
+        
+    # Gelen listenin ilk (ve tek) elemanını döndürüyoruz
+    return {"status": "success", "data": data.data[0]}
