@@ -18,7 +18,7 @@ export default function AddBook() {
   const [books, setBooks] = useState<Book[]>([]);
 
   const handleView = async () => {
-    const API_URL = "http://localhost:8000/books";
+    const API_URL = "https://bookworm-9kaf.onrender.com/books";
 
     // fetch varsayılan olarak GET isteği atar, bu yüzden method belirtmemize gerek yok
     const response = await fetch(API_URL);
