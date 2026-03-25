@@ -7,6 +7,10 @@ export default function AddBook() {
   const [year, setYear] = useState("");
   const [press, setPress] = useState("");
 
+  // Yüklenme durumlarını takip etmek için iki yeni state eklendi
+  const [isLoading, setIsLoading] = useState(true);
+  const [isWakingUp, setIsWakingUp] = useState(false);
+
   interface Book {
     id: string | number;
     title: string;
@@ -20,23 +24,35 @@ export default function AddBook() {
   const handleView = async () => {
     const API_URL = "https://bookworm-9kaf.onrender.com/books";
 
-    // fetch varsayılan olarak GET isteği atar, bu yüzden method belirtmemize gerek yok
-    const response = await fetch(API_URL);
-    const result = await response.json();
+    // İstek 3 saniyeden uzun sürerse isWakingUp state'ini true yapıyoruz
+    const timeoutId = setTimeout(() => {
+      setIsWakingUp(true);
+    }, 3000);
 
-    // İşlem başarılıysa gelen veriyi books state'ine kaydediyoruz
-    if (result.status === "success") {
-      setBooks(result.data);
+    try {
+      const response = await fetch(API_URL);
+      const result = await response.json();
+
+      if (result.status === "success") {
+        setBooks(result.data);
+      }
+    } catch (error) {
+      console.error("Veri çekilirken hata oluştu:", error);
+    } finally {
+      // İşlem bitince yükleme ekranlarını kapatıyoruz
+      clearTimeout(timeoutId);
+      setIsLoading(false);
+      setIsWakingUp(false);
     }
   };
 
   const handleSubmit = async () => {
-    // Validasyon - eğer title veya author boş ise çalışmasın
+    // Validasyon
     if (!title.trim() || !author.trim() || !year.trim() || !press.trim()) {
       alert("Lütfen tüm alanları doldurunuz!");
       return;
     }
-    // İstek FastAPI'nin çalıştığı yerel adrese gidiyor
+
     const API_URL = "https://bookworm-9kaf.onrender.com/books";
 
     const response = await fetch(
@@ -50,21 +66,24 @@ export default function AddBook() {
     const result = await response.json();
     if (result.status === "success") {
       alert("Kitap başarıyla eklendi!");
-      setTitle(""); // Kutuyu temizle
-      setAuthor(""); // Kutuyu temizle
-      setYear(""); // Kutuyu temizle
-      setPress(""); // Kutuyu temizle
-      handleView(); // Kitap listesi güncellensin
+      setTitle("");
+      setAuthor("");
+      setYear("");
+      setPress("");
+
+      // Yeni kitap eklendikten sonra listeyi güncellerken de "yükleniyor" animasyonunu tetikleyebiliriz
+      setIsLoading(true);
+      handleView();
     }
   };
 
-  // Sayfa (bileşen) yüklendiğinde handleView'ı bir kez çalıştırır
   useEffect(() => {
     handleView();
-  }, []); // <-- Buradaki boş dizi [] çok önemlidir.
+  }, []);
 
   return (
     <div style={{ padding: "50px" }}>
+      {/* KİTAPLIK BÖLÜMÜ */}
       <div
         style={{ border: "2px solid blue", margin: "20px", padding: "20px" }}
       >
@@ -74,9 +93,28 @@ export default function AddBook() {
           </h1>
         </div>
 
-        <ul style={{ listStyleType: "none", padding: 0 }}>
-          {books.length === 0 ? (
-            <p>Kitaplar yükleniyor veya liste boş...</p>
+        <ul style={{ listStyleType: "none", padding: 0, marginTop: "20px" }}>
+          {/* Yüklenme durumu kontrolü eklendi */}
+          {isLoading ? (
+            <div
+              style={{
+                padding: "15px",
+                backgroundColor: "#e6f2ff",
+                borderRadius: "8px",
+                color: "blue",
+              }}
+            >
+              {isWakingUp ? (
+                <p style={{ margin: 0, fontWeight: "bold" }}>
+                  ⏳ Sunucu uykudan uyanıyor... Bu işlem yaklaşık 50 saniye
+                  sürebilir, lütfen bekleyiniz.
+                </p>
+              ) : (
+                <p style={{ margin: 0 }}>Kitaplar yükleniyor...</p>
+              )}
+            </div>
+          ) : books.length === 0 ? (
+            <p>Liste boş, henüz kitap eklenmemiş.</p>
           ) : (
             books.map((book) => (
               <li
@@ -95,12 +133,9 @@ export default function AddBook() {
         </ul>
       </div>
 
+      {/* KİTAP EKLE BÖLÜMÜ */}
       <div
-        style={{
-          border: "2px solid #bd2728",
-          margin: "20px",
-          padding: "20px",
-        }}
+        style={{ border: "2px solid #bd2728", margin: "20px", padding: "20px" }}
       >
         <div>
           <h1
@@ -118,13 +153,15 @@ export default function AddBook() {
             border: "1px solid #ccc",
             color: "black",
             marginRight: "10px",
+            width: "100%",
+            maxWidth: "300px",
           }}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Kitap Adı"
         />
 
-        <h2 style={{ marginTop: "2rem", fontWeight: "bold" }}>Yazar İsmi</h2>
+        <h2 style={{ marginTop: "1.5rem", fontWeight: "bold" }}>Yazar İsmi</h2>
         <input
           style={{
             marginTop: "0.5rem",
@@ -132,13 +169,15 @@ export default function AddBook() {
             border: "1px solid #ccc",
             color: "black",
             marginRight: "10px",
+            width: "100%",
+            maxWidth: "300px",
           }}
           value={author}
           onChange={(e) => setAuthor(e.target.value)}
           placeholder="Yazar Adı"
         />
 
-        <h2 style={{ marginTop: "2rem", fontWeight: "bold" }}>Yayın Yılı</h2>
+        <h2 style={{ marginTop: "1.5rem", fontWeight: "bold" }}>Yayın Yılı</h2>
         <input
           style={{
             marginTop: "0.5rem",
@@ -146,6 +185,8 @@ export default function AddBook() {
             border: "1px solid #ccc",
             color: "black",
             marginRight: "10px",
+            width: "100%",
+            maxWidth: "300px",
           }}
           type="number"
           value={year}
@@ -153,7 +194,7 @@ export default function AddBook() {
           placeholder="Yıl"
         />
 
-        <h2 style={{ marginTop: "2rem", fontWeight: "bold" }}>Yayınevi</h2>
+        <h2 style={{ marginTop: "1.5rem", fontWeight: "bold" }}>Yayınevi</h2>
         <input
           style={{
             marginTop: "0.5rem",
@@ -161,6 +202,8 @@ export default function AddBook() {
             border: "1px solid #ccc",
             color: "black",
             marginRight: "10px",
+            width: "100%",
+            maxWidth: "300px",
           }}
           value={press}
           onChange={(e) => setPress(e.target.value)}
@@ -172,9 +215,11 @@ export default function AddBook() {
             style={{
               marginTop: "2rem",
               border: "1px solid #bd2728",
-              padding: "10px",
+              backgroundColor: "white",
+              padding: "10px 20px",
               color: "#bd2728",
               fontWeight: "bold",
+              cursor: "pointer",
             }}
             onClick={handleSubmit}
           >
