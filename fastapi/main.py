@@ -41,3 +41,21 @@ async def get_book(book_id: int):
         
     # Gelen listenin ilk (ve tek) elemanını döndürüyoruz
     return {"status": "success", "data": data.data[0]}
+
+# UPDATE (Güncelleme) - PUT metodu kullanılır
+@app.put("/books/{book_id}")
+async def update_book(book_id: int, title: str, author: str, year: int = 0, press: str = ""):
+    data = supabase.table("books").update({
+        "title": title, 
+        "author": author, 
+        "year": year, 
+        "press": press
+    }).eq("id", book_id).execute()
+    
+    return {"status": "success", "data": data.data}
+
+# DELETE (Silme) - DELETE metodu kullanılır
+@app.delete("/books/{book_id}")
+async def delete_book(book_id: int):
+    data = supabase.table("books").delete().eq("id", book_id).execute()
+    return {"status": "success", "data": data.data}
