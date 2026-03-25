@@ -37,7 +37,7 @@ export default function AddBook() {
       return;
     }
     // İstek FastAPI'nin çalıştığı yerel adrese gidiyor
-    const API_URL = "http://localhost:8000/books";
+    const API_URL = "https://bookworm-9kaf.onrender.com/books";
 
     const response = await fetch(
       `${API_URL}?title=${title}&author=${author}&year=${year}&press=${press}`,
