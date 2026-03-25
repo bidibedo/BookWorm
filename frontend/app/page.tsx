@@ -52,6 +52,9 @@ export default function AddBook() {
       alert("Kitap başarıyla eklendi!");
       setTitle(""); // Kutuyu temizle
       setAuthor(""); // Kutuyu temizle
+      setYear(""); // Kutuyu temizle
+      setPress(""); // Kutuyu temizle
+      handleView(); // Kitap listesi güncellensin
     }
   };
 
