@@ -103,17 +103,36 @@ export default function AddBook() {
     }
   };
 
+  // SADECE handleSubmit FONKSİYONUNU GÜNCELLİYORUZ
   const handleSubmit = async () => {
     if (!title.trim() || !author.trim() || !year.trim() || !press.trim()) {
       return alert("Lütfen tüm alanları doldurunuz!");
     }
+
+    // GÜVENLİK KONTROLÜ: Oturum yoksa veya bilet alınamadıysa işlemi durdur
+    if (!session || !session.access_token) {
+      return alert(
+        "Hata: Oturum biletiniz bulunamadı. Lütfen tekrar giriş yapın.",
+      );
+    }
+
     const response = await fetch(
       `https://bookworm-9kaf.onrender.com/books?title=${title}&author=${author}&year=${year}&press=${press}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // İŞTE BİLETİ BURADA GÖNDERİYORUZ (Bearer: Taşıyıcı anlamına gelir)
+          Authorization: `Bearer ${session.access_token}`,
+        },
       },
     );
+
+    // Eğer arka uçtan 401 hatası (Yetkisiz) dönerse
+    if (response.status === 401) {
+      return alert("Yetkiniz reddedildi. Oturumunuzun süresi dolmuş olabilir.");
+    }
+
     const result = await response.json();
     if (result.status === "success") {
       alert("Kitap eklendi!");
