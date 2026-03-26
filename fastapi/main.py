@@ -1,16 +1,15 @@
-import httpx
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException # Depends ve HTTPException eklendi
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # Güvenlik için eklendi
 from supabase import create_client, Client
-
+import httpx
 
 app = FastAPI()
 
 # Next.js'in (localhost:3000) FastAPI'ye istek atabilmesi için CORS izni veriyoruz
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,9 +20,24 @@ url: str = "https://eoylcckdsiskmkrwljym.supabase.co"
 key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVveWxjY2tkc2lza21rcndsanltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzODA3NzksImV4cCI6MjA4OTk1Njc3OX0.AoJJjp1rST6fnuVV4mAdlSxF1Js2pSM5Zzs5dkp0yiE"
 supabase: Client = create_client(url, key)
 
+# GÜVENLİK GÖREVLİSİ FONKSİYONU (YENİ)
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        # Gelen bileti Supabase'e soruyoruz: "Bu bilet sahte mi, süresi geçmiş mi?"
+        user = supabase.auth.get_user(token)
+        return user
+    except Exception as e:
+        # Bilet geçersizse 401 (Yetkisiz) hatası fırlat
+        raise HTTPException(status_code=401, detail="Yetkisiz işlem: Geçersiz veya eksik bilet")
+
+# CREATE (Oluşturma) - Artık "Depends(verify_token)" ile korunuyor
 @app.post("/books")
-async def create_book(title: str, author: str, year: int, press: str):
-    data = supabase.table("books").insert({"title": title, "author": author, "year": year, "press":press}).execute()
+async def create_book(title: str, author: str, year: int = 0, press: str = "", user = Depends(verify_token)):
+    # Eğer kod buraya ulaştıysa, güvenlik görevlisini başarıyla geçmiş demektir
+    data = supabase.table("books").insert({"title": title, "author": author, "year": year, "press": press}).execute()
     return {"status": "success", "data": data.data}
 
 @app.get("/books")
