@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { supabase } from "../../../utils/supabase"; // Supabase köprümüzü içe aktardık
 
 interface Book {
   id: string | number;
@@ -25,7 +26,11 @@ export default function BookDetail() {
   const [editYear, setEditYear] = useState("");
   const [editPress, setEditPress] = useState("");
 
+  // Oturum state'i
+  const [session, setSession] = useState<any>(null);
+
   useEffect(() => {
+    // 1. Kitap detaylarını getir
     const fetchBookDetail = async () => {
       try {
         const API_URL = `https://bookworm-9kaf.onrender.com/books/${id}`;
@@ -34,7 +39,6 @@ export default function BookDetail() {
 
         if (result.status === "success") {
           setBook(result.data);
-          // Form alanlarını mevcut veritabanı verileriyle doldur
           setEditTitle(result.data.title);
           setEditAuthor(result.data.author);
           setEditYear(result.data.year?.toString() || "");
@@ -48,40 +52,61 @@ export default function BookDetail() {
     };
 
     if (id) fetchBookDetail();
+
+    // 2. Aktif oturum (bilet) var mı kontrol et
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
   }, [id]);
 
-  // SİLME İŞLEMİ (DELETE)
+  // SİLME İŞLEMİ (BİLETLİ)
   const handleDelete = async () => {
     const confirmDelete = window.confirm(
       "Bu kitabı silmek istediğinize emin misiniz?",
     );
-    if (!confirmDelete) return; // Kullanıcı vazgeçerse işlemi durdur
+    if (!confirmDelete) return;
+
+    if (!session || !session.access_token)
+      return alert("Yetkisiz işlem: Lütfen giriş yapın.");
 
     try {
       const API_URL = `https://bookworm-9kaf.onrender.com/books/${id}`;
-      const response = await fetch(API_URL, { method: "DELETE" });
-      const result = await response.json();
+      const response = await fetch(API_URL, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` }, // Bileti ekledik
+      });
 
+      if (response.status === 401) return alert("Yetkiniz reddedildi.");
+
+      const result = await response.json();
       if (result.status === "success") {
         alert("Kitap başarıyla silindi.");
-        router.push("/"); // İşlem bitince ana sayfaya dön
+        router.push("/");
       }
     } catch (error) {
       console.error("Silme hatası:", error);
     }
   };
 
-  // GÜNCELLEME İŞLEMİ (PUT)
+  // GÜNCELLEME İŞLEMİ (BİLETLİ)
   const handleUpdate = async () => {
+    if (!session || !session.access_token)
+      return alert("Yetkisiz işlem: Lütfen giriş yapın.");
+
     try {
       const API_URL = `https://bookworm-9kaf.onrender.com/books/${id}?title=${editTitle}&author=${editAuthor}&year=${editYear}&press=${editPress}`;
-      const response = await fetch(API_URL, { method: "PUT" });
-      const result = await response.json();
+      const response = await fetch(API_URL, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${session.access_token}` }, // Bileti ekledik
+      });
 
+      if (response.status === 401) return alert("Yetkiniz reddedildi.");
+
+      const result = await response.json();
       if (result.status === "success") {
         alert("Kitap güncellendi!");
-        setBook(result.data[0]); // Ekranda görünen veriyi yenisiyle değiştir
-        setIsEditing(false); // Düzenleme modunu kapat
+        setBook(result.data[0]);
+        setIsEditing(false);
       }
     } catch (error) {
       console.error("Güncelleme hatası:", error);
@@ -102,7 +127,6 @@ export default function BookDetail() {
           backgroundColor: "#f9fbf9",
         }}
       >
-        {/* EĞER DÜZENLEME MODUNDA DEĞİLSEK (GÖRÜNTÜLEME EKRANI) */}
         {!isEditing ? (
           <>
             <h1
@@ -134,36 +158,41 @@ export default function BookDetail() {
               >
                 &larr; Geri
               </button>
-              <button
-                onClick={() => setIsEditing(true)}
-                style={{
-                  padding: "10px 20px",
-                  cursor: "pointer",
-                  backgroundColor: "blue",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "5px",
-                }}
-              >
-                Düzenle
-              </button>
-              <button
-                onClick={handleDelete}
-                style={{
-                  padding: "10px 20px",
-                  cursor: "pointer",
-                  backgroundColor: "red",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "5px",
-                }}
-              >
-                Sil
-              </button>
+
+              {/* SADECE OTURUM AÇIKSA DÜZENLE VE SİL BUTONLARINI GÖSTER */}
+              {session && (
+                <>
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    style={{
+                      padding: "10px 20px",
+                      cursor: "pointer",
+                      backgroundColor: "blue",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                    }}
+                  >
+                    Düzenle
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    style={{
+                      padding: "10px 20px",
+                      cursor: "pointer",
+                      backgroundColor: "red",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "5px",
+                    }}
+                  >
+                    Sil
+                  </button>
+                </>
+              )}
             </div>
           </>
         ) : (
-          /* EĞER DÜZENLEME MODUNDAYSAK (FORM EKRANI) */
           <div
             style={{ display: "flex", flexDirection: "column", gap: "10px" }}
           >
@@ -176,7 +205,6 @@ export default function BookDetail() {
             >
               Kitabı Düzenle
             </h2>
-
             <label style={{ fontWeight: "bold" }}>Kitap Adı</label>
             <input
               value={editTitle}
@@ -187,7 +215,6 @@ export default function BookDetail() {
                 color: "black",
               }}
             />
-
             <label style={{ fontWeight: "bold", marginTop: "10px" }}>
               Yazar
             </label>
@@ -200,7 +227,6 @@ export default function BookDetail() {
                 color: "black",
               }}
             />
-
             <label style={{ fontWeight: "bold", marginTop: "10px" }}>
               Yayın Yılı
             </label>
@@ -214,7 +240,6 @@ export default function BookDetail() {
                 color: "black",
               }}
             />
-
             <label style={{ fontWeight: "bold", marginTop: "10px" }}>
               Yayınevi
             </label>
@@ -227,7 +252,6 @@ export default function BookDetail() {
                 color: "black",
               }}
             />
-
             <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
               <button
                 onClick={() => setIsEditing(false)}
