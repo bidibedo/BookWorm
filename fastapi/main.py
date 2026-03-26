@@ -1,6 +1,9 @@
+import httpx
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
+
 
 app = FastAPI()
 
@@ -59,3 +62,73 @@ async def update_book(book_id: int, title: str, author: str, year: int = 0, pres
 async def delete_book(book_id: int):
     data = supabase.table("books").delete().eq("id", book_id).execute()
     return {"status": "success", "data": data.data}
+
+# KİTAP BİLGİSİ ÇEKME (Çift Motorlu: Google Books + OpenLibrary)
+@app.get("/books/lookup/{isbn}")
+async def lookup_isbn(isbn: str):
+    async with httpx.AsyncClient() as client:
+        
+        # --- 1. MOTOR: GOOGLE BOOKS API ---
+        google_url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
+        try:
+            g_response = await client.get(google_url)
+            g_data = g_response.json()
+            
+            if "items" in g_data:
+                vol = g_data["items"][0]["volumeInfo"]
+                
+                # Yılı güvenli bir şekilde çekelim (Örn: "2021-05-12" -> 2021)
+                pub_date = vol.get("publishedDate", "")
+                year = int(pub_date[:4]) if len(pub_date) >= 4 and pub_date[:4].isdigit() else 0
+                
+                return {
+                    "status": "success",
+                    "source": "Google Books",
+                    "data": {
+                        "title": vol.get("title", ""),
+                        "author": vol.get("authors", [""])[0] if vol.get("authors") else "",
+                        "year": year,
+                        "press": vol.get("publisher", "")
+                    }
+                }
+        except Exception as e:
+            print(f"Google API Hatası: {e}")
+            # Hata olursa kodu durdurma, OpenLibrary'e geç
+
+        # --- 2. MOTOR: OPENLIBRARY API (Yedek) ---
+        ol_url = f"https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data"
+        try:
+            ol_response = await client.get(ol_url)
+            ol_data = ol_response.json()
+            ol_key = f"ISBN:{isbn}"
+            
+            if ol_key in ol_data:
+                book = ol_data[ol_key]
+                
+                # OpenLibrary yazarları ve yayınevlerini liste içinde sözlük olarak tutar
+                authors = book.get("authors", [{"name": ""}])
+                author_name = authors[0].get("name", "") if authors else ""
+                
+                publishers = book.get("publishers", [{"name": ""}])
+                press_name = publishers[0].get("name", "") if publishers else ""
+                
+                # Yıl formatı bazen "Oct 12, 2001" bazen "2001" olabilir, son 4 haneyi alıyoruz
+                pub_date = book.get("publish_date", "0")
+                year_str = pub_date[-4:]
+                year = int(year_str) if year_str.isdigit() else 0
+
+                return {
+                    "status": "success",
+                    "source": "OpenLibrary",
+                    "data": {
+                        "title": book.get("title", ""),
+                        "author": author_name,
+                        "year": year,
+                        "press": press_name
+                    }
+                }
+        except Exception as e:
+            print(f"OpenLibrary API Hatası: {e}")
+
+    # İki motor da bulamazsa bu hata mesajını döndür
+    return {"status": "error", "message": "Bu ISBN numarasına ait kitap hiçbir veritabanında bulunamadı."}
