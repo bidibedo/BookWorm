@@ -1,8 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException # Depends ve HTTPException eklendi
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # Güvenlik için eklendi
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
-import httpx
+from pydantic import BaseModel # Gelen veriyi tutmak için eklendi
+import google.generativeai as genai # Gemini kütüphanesi eklendi
+import json
 
 app = FastAPI()
 
@@ -15,6 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
 # Buraya kendi Supabase bilgilerini yapıştır
 url: str = "https://eoylcckdsiskmkrwljym.supabase.co"
 key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVveWxjY2tkc2lza21rcndsanltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzODA3NzksImV4cCI6MjA4OTk1Njc3OX0.AoJJjp1rST6fnuVV4mAdlSxF1Js2pSM5Zzs5dkp0yiE"
@@ -22,6 +26,57 @@ supabase: Client = create_client(url, key)
 
 # GÜVENLİK GÖREVLİSİ FONKSİYONU (YENİ)
 security = HTTPBearer()
+
+# --- GEMINI API AYARI ---
+# DİKKAT: API ANAHTARINI KODUN İÇİNDE BIRAKMA. Şimdilik test için buraya yaz, sonra Render'da çevre değişkeni (Environment Variable) yapacağız.
+genai.configure(api_key="AIzaSyDr89dA4ctLpw7VUdErig7vUeDc8ouus_s")
+
+# Gelen OCR metnini yakalayacak yapı
+class OCRRequest(BaseModel):
+    raw_text: str
+
+# GÜBÜR GÖNDERME VE TEMİZLEME UÇ NOKTASI (YENİ)
+@app.post("/books/parse-spine")
+async def parse_book_spine(request: OCRRequest):
+    if not request.raw_text.strip():
+        raise HTTPException(status_code=400, detail="Metin boş olamaz.")
+
+    try:
+        # En hızlı ve maliyet-etkin modelimiz olan Flash'ı seçiyoruz
+        model = genai.GenerativeModel('gemini-1.5-flash')
+
+        prompt = f"""
+        Aşağıdaki karmaşık ve hatalı OCR metninin içinden kitap adını ve yazarını bul.
+        
+        OCR Metni: "{request.raw_text}"
+        """
+
+        # Gemini'yi kesinlikle ve sadece JSON döndürmeye zorluyoruz (Bu özellik hayat kurtarır)
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "title": {"type": "STRING"},
+                        "author": {"type": "STRING"}
+                    },
+                    "required": ["title", "author"]
+                },
+                temperature=0.1 # Yaratıcılığı kısıp netliğe odaklanıyoruz
+            )
+        )
+
+        # Gemini'den gelen temiz JSON'ı Python sözlüğüne çevirip arayüze yolluyoruz
+        clean_book_data = json.loads(response.text)
+        return {"status": "success", "data": clean_book_data}
+
+    except Exception as e:
+        print(f"Gemini Hatası: {e}")
+        return {"status": "error", "message": f"Yapay zeka analizi başarısız oldu: {e}", "raw_text": request.raw_text}
+
+# ... (Diğer uç noktaların GET, POST, PUT, DELETE aynı kalacak) ...
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
