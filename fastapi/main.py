@@ -48,7 +48,7 @@ async def parse_book_spine(request: OCRRequest):
         raise HTTPException(status_code=400, detail="Tahmin listesi boş olamaz.")
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
 
         # Prompt'umuzu çoklu tahmin mantığına göre güncelledik
         prompt = f"""
