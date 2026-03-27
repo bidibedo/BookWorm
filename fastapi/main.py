@@ -5,6 +5,7 @@ from supabase import create_client, Client
 from pydantic import BaseModel # Gelen veriyi tutmak için eklendi
 import google.generativeai as genai # Gemini kütüphanesi eklendi
 import json
+from typing import List # List tipini kullanabilmek için ekledik
 
 app = FastAPI()
 
@@ -31,27 +32,29 @@ security = HTTPBearer()
 # DİKKAT: API ANAHTARINI KODUN İÇİNDE BIRAKMA. Şimdilik test için buraya yaz, sonra Render'da çevre değişkeni (Environment Variable) yapacağız.
 genai.configure(api_key="AIzaSyDr89dA4ctLpw7VUdErig7vUeDc8ouus_s")
 
-# Gelen OCR metnini yakalayacak yapı
+# Gelen OCR tahminlerini yakalayacak yapı (Artık Liste alıyor)
 class OCRRequest(BaseModel):
-    raw_text: str
+    candidates: List[str]
 
-# GÜBÜR GÖNDERME VE TEMİZLEME UÇ NOKTASI (YENİ)
+# GÜBÜR GÖNDERME VE TEMİZLEME UÇ NOKTASI
 @app.post("/books/parse-spine")
 async def parse_book_spine(request: OCRRequest):
-    if not request.raw_text.strip():
-        raise HTTPException(status_code=400, detail="Metin boş olamaz.")
+    if not request.candidates:
+        raise HTTPException(status_code=400, detail="Tahmin listesi boş olamaz.")
 
     try:
-        # En hızlı ve maliyet-etkin modelimiz olan Flash'ı seçiyoruz
         model = genai.GenerativeModel('gemini-1.5-flash')
 
+        # Prompt'umuzu çoklu tahmin mantığına göre güncelledik
         prompt = f"""
-        Aşağıdaki karmaşık ve hatalı OCR metninin içinden kitap adını ve yazarını bul.
+        Aşağıda bir kitabın sırtından okunan metin için kameranın ürettiği alternatif tahminlerin bir listesi var.
+        Kamera aynı yazıyı farklı açılardan veya farklı olasılıklarla okumuş olabilir. 
+        Bu alternatifleri incele, harfleri ve kelimeleri bağlamına göre birleştirerek mantıklı olan tek bir "Kitap Adı" ve "Yazar Adı" çıkar.
         
-        OCR Metni: "{request.raw_text}"
+        OCR Tahminleri Listesi:
+        {request.candidates}
         """
 
-        # Gemini'yi kesinlikle ve sadece JSON döndürmeye zorluyoruz (Bu özellik hayat kurtarır)
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
@@ -64,18 +67,18 @@ async def parse_book_spine(request: OCRRequest):
                     },
                     "required": ["title", "author"]
                 },
-                temperature=0.1 # Yaratıcılığı kısıp netliğe odaklanıyoruz
+                temperature=0.1
             )
         )
 
-        # Gemini'den gelen temiz JSON'ı Python sözlüğüne çevirip arayüze yolluyoruz
+        import json
         clean_book_data = json.loads(response.text)
         return {"status": "success", "data": clean_book_data}
 
     except Exception as e:
         print(f"Gemini Hatası: {e}")
-        return {"status": "error", "message": f"Yapay zeka analizi başarısız oldu: {e}", "raw_text": request.raw_text}
-
+        return {"status": "error", "message": f"Yapay zeka analizi başarısız oldu: {e}", "raw_text": str(request.candidates)}
+    
 # ... (Diğer uç noktaların GET, POST, PUT, DELETE aynı kalacak) ...
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
