@@ -205,12 +205,11 @@ async def lookup_isbn(isbn: str):
     # İki motor da bulamazsa bu hata mesajını döndür
     return {"status": "error", "message": "Bu ISBN numarasına ait kitap hiçbir veritabanında bulunamadı."}
 
-# GECİCİ DEDEKTİF UÇ NOKTASI: API anahtarımın hangi modellere yetkisi var?
-@app.get("/books/list-models")
+# GECİCİ DEDEKTİF UÇ NOKTASI (Adresi kök dizine taşıdık)
+@app.get("/list-models")
 async def list_available_models():
     try:
         available_models = []
-        # Google'a soruyoruz: Bana text/json üretebilen modellerimin listesini ver
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
