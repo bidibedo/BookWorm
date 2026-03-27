@@ -5,6 +5,7 @@ from supabase import create_client, Client
 from pydantic import BaseModel # Gelen veriyi tutmak için eklendi
 import google.generativeai as genai # Gemini kütüphanesi eklendi
 import json
+import os
 from typing import List # List tipini kullanabilmek için ekledik
 
 app = FastAPI()
@@ -28,9 +29,13 @@ supabase: Client = create_client(url, key)
 # GÜVENLİK GÖREVLİSİ FONKSİYONU (YENİ)
 security = HTTPBearer()
 
-# --- GEMINI API AYARI ---
-# DİKKAT: API ANAHTARINI KODUN İÇİNDE BIRAKMA. Şimdilik test için buraya yaz, sonra Render'da çevre değişkeni (Environment Variable) yapacağız.
-genai.configure(api_key="AIzaSyDr89dA4ctLpw7VUdErig7vUeDc8ouus_s")
+# API ANAHTARINI ARTIK GÜVENLİ BİR ŞEKİLDE SUNUCUDAN (RENDER) ÇEKİYORUZ
+api_key = os.environ.get("GEMINI_API_KEY")
+
+if not api_key:
+    print("CRITICAL ERROR: GEMINI_API_KEY bulunamadı!")
+
+genai.configure(api_key=api_key)
 
 # Gelen OCR tahminlerini yakalayacak yapı (Artık Liste alıyor)
 class OCRRequest(BaseModel):
@@ -43,7 +48,7 @@ async def parse_book_spine(request: OCRRequest):
         raise HTTPException(status_code=400, detail="Tahmin listesi boş olamaz.")
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash-002')
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
         # Prompt'umuzu çoklu tahmin mantığına göre güncelledik
         prompt = f"""
