@@ -4,17 +4,18 @@ import Vision
 struct ContentView: View {
     @State private var showCamera = false
     @State private var capturedImage: UIImage?
+    
+    // Ekranda göstereceğimiz sonuç metni
     @State private var recognizedText = "Henüz kitap taranmadı."
-    @State private var isProcessing = false // Okuma işlemi sürüyor mu?
+    @State private var isProcessing = false
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("BookWorm Tarayıcı")
+            Text("BookWorm AI")
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .padding(.top)
 
-            // FOTOĞRAF GÖSTERİM ALANI
             if let image = capturedImage {
                 Image(uiImage: image)
                     .resizable()
@@ -30,9 +31,8 @@ struct ContentView: View {
                     .overlay(Text("Kamera Görüntüsü").foregroundColor(.gray))
             }
 
-            // OKUNAN METİN VEYA YÜKLEME EKRANI
             if isProcessing {
-                ProgressView("Yapay Zeka Metni Okuyor...")
+                ProgressView("Gemini AI Analiz Ediyor...")
                     .padding()
             } else {
                 ScrollView {
@@ -52,11 +52,10 @@ struct ContentView: View {
 
             Spacer()
 
-            // KAMERAYI AÇMA BUTONU
             Button(action: {
                 showCamera = true
             }) {
-                Text("Kitap Sırtını Çek ve Oku")
+                Text("Kitap Sırtını Çek ve Analiz Et")
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
@@ -68,11 +67,9 @@ struct ContentView: View {
             .padding()
             .padding(.bottom, 20)
         }
-        // showCamera true olunca kamerayı tam ekran (sheet) aç
         .sheet(isPresented: $showCamera) {
             ImagePicker(image: $capturedImage)
         }
-        // capturedImage (fotoğraf) değiştiğinde hemen okuma işlemini başlat
         .onChange(of: capturedImage) { newImage in
             if let img = newImage {
                 recognizeText(from: img)
@@ -80,12 +77,11 @@ struct ContentView: View {
         }
     }
 
-    // YÜKSEK ÇÖZÜNÜRLÜKLÜ FOTOĞRAFTAN METİN OKUMA MANTIĞI
+    // 1. AŞAMA: VİSION İLE FOTOĞRAFTAN OLASILIKLARI ÇIKARMA
     func recognizeText(from image: UIImage) {
         isProcessing = true
-        recognizedText = ""
+        recognizedText = "Görüntü okunuyor..."
 
-        // Resmi Vision'ın anlayacağı formata (cgImage) çevir
         guard let cgImage = image.cgImage else {
             recognizedText = "Görüntü işlenemedi."
             isProcessing = false
@@ -101,25 +97,36 @@ struct ContentView: View {
                 return
             }
 
-            var fullText = ""
+            var allCandidates: [String] = []
+
+            // Senin o harika fikrin: Sadece 1 değil, en iyi 5 ihtimali alıyoruz!
             for observation in observations {
-                guard let topCandidate = observation.topCandidates(1).first else { continue }
-                // Artık tek harf filtresine gerek yok çünkü fotoğraf sabit, direkt ekle
-                fullText += topCandidate.string + " "
+                let candidates = observation.topCandidates(5)
+                for candidate in candidates {
+                    if candidate.string.count > 2 { // Çok kısa gürültüleri ele
+                        allCandidates.append(candidate.string)
+                    }
+                }
             }
 
-            DispatchQueue.main.async {
-                self.recognizedText = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.isProcessing = false
+            // Eğer hiç kelime bulamadıysa işlemi bitir
+            if allCandidates.isEmpty {
+                DispatchQueue.main.async {
+                    self.recognizedText = "Okunabilir bir metin bulunamadı."
+                    self.isProcessing = false
+                }
+                return
             }
+
+            // 2. AŞAMA: BULUNAN TÜM İHTİMALLERİ GEMINI'YE GÖNDER
+            self.sendToBackendForAI(candidates: allCandidates)
         }
 
-        request.recognitionLevel = .accurate // En hassas seviyede oku
+        request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         
-        // İşlemi arka planda yap ki ekran donmasın
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try handler.perform([request])
@@ -130,5 +137,62 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // 3. AŞAMA: RENDER SUNUCUSUNA (FASTAPI) İSTEK ATMA
+    func sendToBackendForAI(candidates: [String]) {
+        DispatchQueue.main.async {
+            self.recognizedText = "Gemini AI verileri birleştiriyor..."
+        }
+
+        // Kendi Render adresini buraya yazdık
+        guard let url = URL(string: "https://bookworm-9kaf.onrender.com/books/parse-spine") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Veriyi JSON formatına çeviriyoruz {"candidates": ["...", "..."]}
+        let body: [String: Any] = ["candidates": candidates]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    self.recognizedText = "Sunucu Hatası: \(error.localizedDescription)"
+                    self.isProcessing = false
+                }
+                return
+            }
+
+            guard let data = data else { return }
+
+            // Backend'den gelen JSON'ı çözümlüyoruz
+            do {
+                if let jsonResponse = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+                   let status = jsonResponse["status"] as? String, status == "success",
+                   let bookData = jsonResponse["data"] as? [String: String] {
+                    
+                    let title = bookData["title"] ?? "Bilinmeyen Kitap"
+                    let author = bookData["author"] ?? "Bilinmeyen Yazar"
+                    
+                    DispatchQueue.main.async {
+                        // YAPAY ZEKA BAŞARIYLA ÇÖZDÜ! Ekrana gururla yazdırıyoruz.
+                        self.recognizedText = "📖 \(title)\n✍️ \(author)"
+                        self.isProcessing = false
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        self.recognizedText = "AI veriyi anlamlandıramadı."
+                        self.isProcessing = false
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.recognizedText = "Yanıt çözümlenemedi."
+                    self.isProcessing = false
+                }
+            }
+        }.resume()
     }
 }
